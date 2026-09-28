@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consolidado de Bodega - Avita</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- SheetJS para leer Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 p-4 md:p-8">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+        
+        <!-- ENCABEZADO Y CARGA -->
+        <div class="bg-white rounded-xl shadow-md p-6 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-slate-900">Analizador de Consolidado</h1>
+                <p class="text-sm text-slate-500">Repositorio: <code class="bg-slate-100 px-2 py-0.5 rounded text-blue-600 font-mono">aov-avita/bdg</code></p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Botón Cargar Archivos Manuales -->
+                <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-4 py-2.5 rounded-lg shadow transition flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+                    <span>Cargar / Añadir Excel</span>
+                    <input type="file" id="excelFileInput" accept=".xlsx, .xls" multiple class="hidden">
+                </label>
+
+                <!-- Botón Vaciar Memoria -->
+                <button onclick="limpiarMemoriaLocal()" class="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-3 py-2.5 rounded-lg transition">
+                    🗑️ Limpiar Memoria
+                </button>
+            </div>
+        </div>
+
+        <!-- ESTADO DE ARCHIVOS PROCESADOS -->
+        <div class="bg-white rounded-xl shadow-md p-4 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-2">
+                <span class="font-bold text-slate-500 uppercase">Estado:</span>
+                <span id="statusBadge" class="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-semibold">Inicializando...</span>
+            </div>
+            <div id="fileListTags" class="flex flex-wrap gap-1.5 text-slate-500">
+                <!-- Etiquetas de archivos cargados se inyectan aquí -->
+            </div>
+        </div>
+
+        <!-- PANEL DE FILTROS -->
+        <div class="bg-white rounded-xl shadow-md p-6 space-y-4">
+            <h2 class="text-lg font-semibold text-slate-700 border-b pb-2">Filtros de Búsqueda</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                <div class="lg:col-span-2">
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Buscar Material / Archivo Origen / Cuenta</label>
+                    <input type="text" id="searchInput" placeholder="Ej. terciado, 2.1.3, Pedido 0035..." class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Fecha Desde</label>
+                    <input type="date" id="dateFrom" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Fecha Hasta</label>
+                    <input type="date" id="dateTo" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Sector</label>
+                    <select id="sectorFilter" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="">Todos los sectores</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-500 uppercase mb-1">Filtrar Fecha Por</label>
+                    <select id="dateColumnFilter" class="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="Fecha en obra">Fecha en obra</option>
+                        <option value="Solicitado">Fecha Solicitado</option>
+                    </select>
+                </div>
+
+                <div class="flex items-end lg:col-span-2">
+                    <button id="clearFilters" class="w-full bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium py-2 px-4 rounded-lg text-sm transition">
+                        Limpiar Filtros
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- RESUMEN DE RESULTADOS -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-white rounded-xl shadow p-4 border-l-4 border-blue-500">
+                <span class="text-xs font-bold text-slate-400 uppercase">Registros Únicos</span>
+                <p id="totalRecords" class="text-2xl font-bold text-slate-800">0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-4 border-l-4 border-emerald-500">
+                <span class="text-xs font-bold text-slate-400 uppercase">Suma Total Cantidad</span>
+                <p id="totalQuantity" class="text-2xl font-bold text-slate-800">0</p>
+            </div>
+            <div class="bg-white rounded-xl shadow p-4 border-l-4 border-purple-500">
+                <span class="text-xs font-bold text-slate-400 uppercase">Sectores Únicos</span>
+                <p id="uniqueSectors" class="text-2xl font-bold text-slate-800">0</p>
+            </div>
+        </div>
+
+        <!-- TABLA DE RESULTADOS -->
+        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+            <div class="overflow-x-auto max-h-[600px]">
+                <table class="w-full text-left text-sm border-collapse">
+                    <thead class="bg-slate-800 text-slate-200 sticky top-0 uppercase text-xs">
+                        <tr>
+                            <th class="p-3">Origen</th>
+                            <th class="p-3">Item</th>
+                            <th class="p-3">Cta Costo</th>
+                            <th class="p-3">Material</th>
+                            <th class="p-3 text-right">Cantidad</th>
+                            <th class="p-3">Unidad</th>
+                            <th class="p-3">Fecha Obra</th>
+                            <th class="p-3">Sector</th>
+                            <th class="p-3">Solicitado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-200">
+                        <tr>
+                            <td colspan="9" class="p-8 text-center text-slate-400">
+                                Sin datos cargados. Carga un archivo Excel o sube archivos a tu repositorio.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        let registrosMap = new Map(); // Mapa para garantizar duplicados cero por clave única
+        let rawData = [];
+        let filteredData = [];
+        let archivosProcesadosSet = new Set();
+
+        // Lista de archivos que buscará en el repositorio público de GitHub automáticamente
+        const archivosRepoGitHub = [
+            'CONSOLIDADO_GENERAL.xlsx',
+            'CONSOLIDADO_GENERAL_1al35.xlsx',
+            'CONSOLIDADO_GENERAL_36al50.xlsx',
+            'CONSOLIDADO_GENERAL_51al100.xlsx'
+        ];
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // 1. Cargar datos guardados previamente en el almacenamiento del navegador
+            cargarDesdeLocalStorage();
+
+            // 2. Intentar buscar archivos subidos en el repositorio GitHub
+            await cargarDesdeGitHubRepo();
+
+            // Event Listeners
+            document.getElementById('excelFileInput').addEventListener('change', handleFileUpload);
+            document.getElementById('searchInput').addEventListener('input', applyFilters);
+            document.getElementById('dateFrom').addEventListener('change', applyFilters);
+            document.getElementById('dateTo').addEventListener('change', applyFilters);
+            document.getElementById('sectorFilter').addEventListener('change', applyFilters);
+            document.getElementById('dateColumnFilter').addEventListener('change', applyFilters);
+            document.getElementById('clearFilters').addEventListener('click', resetFilters);
+        });
+
+        // Cargar datos que ya estaban guardados localmente
+        function cargarDesdeLocalStorage() {
+            const cache = localStorage.getItem('BDG_CONSOLIDADO_DATA');
+            const cacheFiles = localStorage.getItem('BDG_CONSOLIDADO_FILES');
+            
+            if (cache) {
+                try {
+                    const datosGuardados = JSON.parse(cache);
+                    datosGuardados.forEach(row => agregarRegistroUnico(row));
+                } catch(e) {}
+            }
+
+            if (cacheFiles) {
+                try {
+                    JSON.parse(cacheFiles).forEach(f => archivosProcesadosSet.add(f));
+                } catch(e) {}
+            }
+
+            actualizarEstadoUI();
+        }
+
+        // Guardar los datos actuales en el navegador
+        function guardarEnLocalStorage() {
+            localStorage.setItem('BDG_CONSOLIDADO_DATA', JSON.stringify(Array.from(registrosMap.values())));
+            localStorage.setItem('BDG_CONSOLIDADO_FILES', JSON.stringify(Array.from(archivosProcesadosSet)));
+        }
+
+        function limpiarMemoriaLocal() {
+            if (confirm("¿Deseas borrar los datos guardados en la memoria local del navegador?")) {
+                localStorage.removeItem('BDG_CONSOLIDADO_DATA');
+                localStorage.removeItem('BDG_CONSOLIDADO_FILES');
+                registrosMap.clear();
+                archivosProcesadosSet.clear();
+                actualizarEstadoUI();
+                applyFilters();
+            }
+        }
+
+        // Intentar leer automáticamente los archivos .xlsx subidos a GitHub
+        async function cargarDesdeGitHubRepo() {
+            for (const archivo of archivosRepoGitHub) {
+                try {
+                    const response = await fetch(`./${archivo}?t=${new Date().getTime()}`);
+                    if (!response.ok) continue;
+
+                    const buffer = await response.arrayBuffer();
+                    procesarArrayBufferExcel(buffer, archivo);
+                } catch (e) {}
+            }
+            actualizarEstadoUI();
+            applyFilters();
+        }
+
+        // Carga de archivos arrastrados o seleccionados manualmente por el botón
+        function handleFileUpload(e) {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+
+            Array.from(files).forEach(file => {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    procesarArrayBufferExcel(evt.target.result, file.name);
+                    guardarEnLocalStorage();
+                    actualizarEstadoUI();
+                    applyFilters();
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function procesarArrayBufferExcel(buffer, nombreArchivo) {
+            const workbook = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const filas = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+
+            filas.forEach(row => agregarRegistroUnico(row));
+            archivosProcesadosSet.add(nombreArchivo);
+        }
+
+        function agregarRegistroUnico(row) {
+            const origen = getVal(row, 'Archivo Origen');
+            const item = getVal(row, 'Item');
+            const material = getVal(row, 'Material');
+
+            // Clave única anti-duplicados: ArchivoOrigen + Item + Material
+            const claveUnica = `${origen}_${item}_${material}`.toLowerCase().trim();
+
+            if (claveUnica && !registrosMap.has(claveUnica)) {
+                registrosMap.set(claveUnica, row);
+            }
+        }
+
+        function actualizarEstadoUI() {
+            rawData = Array.from(registrosMap.values());
+            const statusBadge = document.getElementById('statusBadge');
+            const fileListTags = document.getElementById('fileListTags');
+
+            if (rawData.length > 0) {
+                statusBadge.className = "bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-semibold";
+                statusBadge.textContent = `${rawData.length} registros cargados`;
+            } else {
+                statusBadge.className = "bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-semibold";
+                statusBadge.textContent = "Sin datos guardados";
+            }
+
+            fileListTags.innerHTML = Array.from(archivosProcesadosSet).map(f => 
+                `<span class="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[10px] font-mono">${f}</span>`
+            ).join('');
+
+            populateSectorFilter();
+        }
+
+        function populateSectorFilter() {
+            const sectorSelect = document.getElementById('sectorFilter');
+            const valorPrevio = sectorSelect.value;
+            sectorSelect.innerHTML = '<option value="">Todos los sectores</option>';
+
+            const sectors = [...new Set(rawData.map(row => getVal(row, 'Sector')).filter(Boolean))].sort();
+            
+            sectors.forEach(sec => {
+                const opt = document.createElement('option');
+                opt.value = sec;
+                opt.textContent = sec;
+                sectorSelect.appendChild(opt);
+            });
+
+            sectorSelect.value = valorPrevio;
+        }
+
+        function getVal(row, keyName) {
+            const foundKey = Object.keys(row).find(k => k.trim().toLowerCase() === keyName.trim().toLowerCase());
+            return foundKey ? row[foundKey] : "";
+        }
+
+        function formatDate(val) {
+            if (!val) return "";
+            if (val instanceof Date) return val.toISOString().split('T')[0];
+            const d = new Date(val);
+            return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : String(val);
+        }
+
+        function applyFilters() {
+            const searchText = document.getElementById('searchInput').value.toLowerCase().trim();
+            const dateFrom = document.getElementById('dateFrom').value;
+            const dateTo = document.getElementById('dateTo').value;
+            const selectedSector = document.getElementById('sectorFilter').value;
+            const dateColTarget = document.getElementById('dateColumnFilter').value;
+
+            filteredData = rawData.filter(row => {
+                const material = String(getVal(row, 'Material')).toLowerCase();
+                const origen = String(getVal(row, 'Archivo Origen')).toLowerCase();
+                const cta = String(getVal(row, 'Cuenta de costo')).toLowerCase();
+                
+                const matchesText = !searchText || 
+                    material.includes(searchText) || 
+                    origen.includes(searchText) || 
+                    cta.includes(searchText);
+
+                const sectorVal = String(getVal(row, 'Sector'));
+                const matchesSector = !selectedSector || sectorVal === selectedSector;
+
+                const rowDateStr = formatDate(getVal(row, dateColTarget));
+                let matchesDate = true;
+
+                if (dateFrom && rowDateStr) matchesDate = matchesDate && (rowDateStr >= dateFrom);
+                if (dateTo && rowDateStr) matchesDate = matchesDate && (rowDateStr <= dateTo);
+
+                return matchesText && matchesSector && matchesDate;
+            });
+
+            renderTable();
+            updateStats();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">No hay datos que coincidan con los filtros.</td></tr>`;
+                return;
+            }
+
+            filteredData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
+
+                tr.innerHTML = `
+                    <td class="p-3 text-xs font-mono text-slate-500">${getVal(row, 'Archivo Origen')}</td>
+                    <td class="p-3 font-semibold text-blue-600">${getVal(row, 'Item')}</td>
+                    <td class="p-3 font-mono text-xs">${getVal(row, 'Cuenta de costo')}</td>
+                    <td class="p-3 font-medium text-slate-800">${getVal(row, 'Material')}</td>
+                    <td class="p-3 text-right font-bold text-slate-900">${getVal(row, 'Cantidad')}</td>
+                    <td class="p-3 text-xs text-slate-500">${getVal(row, 'Unidad')}</td>
+                    <td class="p-3 text-xs">${formatDate(getVal(row, 'Fecha en obra'))}</td>
+                    <td class="p-3"><span class="bg-slate-100 text-slate-700 text-xs px-2 py-1 rounded border">${getVal(row, 'Sector')}</span></td>
+                    <td class="p-3 text-xs">${formatDate(getVal(row, 'Solicitado'))}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function updateStats() {
+            document.getElementById('totalRecords').textContent = filteredData.length.toLocaleString();
+
+            const totalQty = filteredData.reduce((acc, row) => {
+                const q = parseFloat(getVal(row, 'Cantidad'));
+                return acc + (!isNaN(q) ? q : 0);
+            }, 0);
+            document.getElementById('totalQuantity').textContent = totalQty.toLocaleString();
+
+            const actSectors = new Set(filteredData.map(row => getVal(row, 'Sector')).filter(Boolean)).size;
+            document.getElementById('uniqueSectors').textContent = actSectors;
+        }
+
+        function resetFilters() {
+            document.getElementById('searchInput').value = '';
+            document.getElementById('dateFrom').value = '';
+            document.getElementById('dateTo').value = '';
+            document.getElementById('sectorFilter').value = '';
+            applyFilters();
+        }
+    </script>
+</body>
+</html>
